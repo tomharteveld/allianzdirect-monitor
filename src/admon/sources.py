@@ -79,7 +79,8 @@ def _q():
             FROM {config.src('gsc_queries')} WHERE {gsc_where} GROUP BY 1, 2""",
         # Search Console, URL level (every page counts with its own position)
         'gsc_p_week': f"""
-            SELECT {week} AS w, {url_cl} AS cl, SUM(clicks) AS c, SUM(impressions) AS i, SUM(position * impressions) AS pw
+            SELECT {week} AS w, {url_cl} AS cl, SUM(clicks) AS c, SUM(impressions) AS i, SUM(position * impressions) AS pw,
+                   COUNT(DISTINCT date) AS days
             FROM {config.src('gsc_page_queries')} WHERE {gsc_where} GROUP BY 1, 2""",
         'gsc_top_q': f"""
             WITH b AS (SELECT {week} AS w, query AS k, SUM(clicks) AS c, SUM(impressions) AS i, SUM(position * impressions) AS pw

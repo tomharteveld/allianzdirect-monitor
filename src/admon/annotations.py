@@ -56,6 +56,9 @@ def auto_doubts(D, cfg, today):
     for r in gt:
         if r[0] >= since and usual and r[1] < 0.9 * usual:
             add(r[0], f'ChatGPT-meting onvolledig ({r[1]} van {usual} prompts)', 'Aandelen voor deze week zijn minder betrouwbaar.', ['chatgpt'])
+    for w, n in (D.get('gsc_partial_weeks') or {}).items():
+        if w >= since:
+            add(w, f'Search Console-export: {n} van 7 dagen in deze week', 'Vertoningen zijn omgerekend naar een volle week; posities zijn gewone gemiddelden.', ['google'])
     # stale sources at build time
     t = dt.date.fromisoformat(today)
     for key, label, tabs, limit in [('google', 'FolloEngine Google', ['google', 'aio'], 10), ('chatgpt', 'FolloEngine ChatGPT', ['chatgpt'], 10),

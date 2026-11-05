@@ -47,7 +47,8 @@ def test_build_payload_shapes():
         assert len(v['share']) == n
     assert D['fe_trend'][-1][1] == D['fe_cl']['alle']['share'][-1]
     w = len(D['gsc_weekly'])
-    assert w == 39, 'the incomplete last GSC week must be dropped'
+    assert w == 38, 'the running last week and the 2-day week must be dropped'
+    assert list(D['gsc_partial_weeks'].values()) == [5]
     for v in D['gsc_cl'].values():
         assert len(v['url_pos']) == len(v['q_pos']) == w
     assert all(not v['brand'] or v['cl'] == 'merk' for v in D['gsc_query_hist'].values())

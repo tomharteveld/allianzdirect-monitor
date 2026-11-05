@@ -230,30 +230,35 @@ def chatgpt(S, cfg):
 
 # ---------------------------------------------------------------- Search Console
 def gsc(S, cfg):
+    """Weekly Search Console. The Windsor export misses single days now and then: weeks with at least
+    MIN_DAYS days count, and impressions/clicks are scaled to a full week (positions are averages and
+    need no scaling). The running week at the end is dropped until it is complete."""
+    MIN_DAYS = 4
     cls = _cl_ids()
-    days = collections.Counter()
-    q = collections.defaultdict(lambda: [0, 0, 0.0])
-    for r in S['gsc_q_week']:
-        days[r['w']] = max(days[r['w']], r['days'] or 0)
-        for c in (r['cl'], 'alle'):
-            a = q[(r['w'], c)]
-            a[0] += r['c'] or 0
-            a[1] += r['i'] or 0
-            a[2] += r['pw'] or 0
-    p = collections.defaultdict(lambda: [0, 0, 0.0])
-    for r in S['gsc_p_week']:
-        for c in (r['cl'], 'alle'):
-            a = p[(r['w'], c)]
-            a[0] += r['c'] or 0
-            a[1] += r['i'] or 0
-            a[2] += r['pw'] or 0
-    weeks = sorted(w for w in days if days[w] == 7)       # complete weeks only
+    days = collections.defaultdict(lambda: collections.Counter())      # source -> week -> days with data
+
+    def acc(rows, src):
+        out = collections.defaultdict(lambda: [0, 0, 0.0])
+        for r in rows:
+            days[src][r['w']] = max(days[src][r['w']], r.get('days') or 7)
+            for c in (r['cl'], 'alle'):
+                a = out[(r['w'], c)]
+                a[0] += r['c'] or 0
+                a[1] += r['i'] or 0
+                a[2] += r['pw'] or 0
+        return out
+    q, p = acc(S['gsc_q_week'], 'q'), acc(S['gsc_p_week'], 'p')
+    allw = sorted(set(days['q']) | set(days['p']))
+    last = allw[-1] if allw else None
+    weeks = [w for w in allw if days['q'][w] >= MIN_DAYS and days['p'][w] >= MIN_DAYS and not (w == last and min(days['q'][w], days['p'][w]) < 7)]
+    scale = lambda src, w: 7 / days[src][w] if days[src][w] else 1
     pos = lambda a: _r(a[2] / a[1]) if a[1] else None
-    gsc_weekly = [[w, q[(w, 'alle')][0], q[(w, 'alle')][1], pos(q[(w, 'alle')])] for w in weeks]
+    gsc_weekly = [[w, round(q[(w, 'alle')][0] * scale('q', w)), round(q[(w, 'alle')][1] * scale('q', w)), pos(q[(w, 'alle')])] for w in weeks]
     gsc_cl = {}
     for c in ['alle'] + cls:
-        gsc_cl[c] = {'url_impr': [p[(w, c)][1] for w in weeks], 'url_pos': [pos(p[(w, c)]) for w in weeks],
-                     'q_impr': [q[(w, c)][1] for w in weeks], 'q_pos': [pos(q[(w, c)]) for w in weeks]}
+        gsc_cl[c] = {'url_impr': [round(p[(w, c)][1] * scale('p', w)) for w in weeks], 'url_pos': [pos(p[(w, c)]) for w in weeks],
+                     'q_impr': [round(q[(w, c)][1] * scale('q', w)) for w in weeks], 'q_pos': [pos(q[(w, c)]) for w in weeks]}
+    gsc_days = {w: min(days['q'][w], days['p'][w]) for w in weeks if min(days['q'][w], days['p'][w]) < 7}
 
     def tops(rows, n):
         out = collections.defaultdict(list)
@@ -269,7 +274,7 @@ def gsc(S, cfg):
             impr[r['k']] += r['i'] or 0
     qh = {k: {'brand': bool(brand.search(k)), 'impr': impr[k], 'cl': config.classify('keyword', k),
               'pos': [hist[k].get(w) for w in weeks]} for k, _ in impr.most_common()}
-    return {'gsc_weekly': gsc_weekly, 'gsc_cl': gsc_cl, 'gsc_week_queries': tops(S['gsc_top_q'], 40),
+    return {'gsc_weekly': gsc_weekly, 'gsc_cl': gsc_cl, 'gsc_partial_weeks': gsc_days, 'gsc_week_queries': tops(S['gsc_top_q'], 40),
             'gsc_week_pages': tops(S['gsc_top_p'], 25), 'gsc_query_hist': qh}
 
 

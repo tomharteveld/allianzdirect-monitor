@@ -68,7 +68,7 @@ def sources(seed=7):
     gsc_weeks = _dates(40, '2026-11-02')   # Mondays; the last one is incomplete
     queries = KEYWORDS + ['allianz direct', 'allianz direct inloggen']
     for j, w in enumerate(gsc_weeks):
-        days = 3 if j == len(gsc_weeks) - 1 else 7
+        days = 3 if j == len(gsc_weeks) - 1 else 5 if j == 10 else 2 if j == 11 else 7
         for q in queries:
             i = rnd.randint(200, 5000)
             p = rnd.uniform(2, 25)
@@ -80,7 +80,7 @@ def sources(seed=7):
             i = rnd.randint(500, 9000)
             p = rnd.uniform(3, 20)
             u = 'https://www.allianzdirect.nl' + pg
-            S['gsc_p_week'].append({'w': w, 'cl': config.classify('url', u), 'c': int(i * .03), 'i': i, 'pw': p * i})
+            S['gsc_p_week'].append({'w': w, 'cl': config.classify('url', u), 'c': int(i * .03), 'i': i, 'pw': p * i, 'days': days})
             S['gsc_top_p'].append({'w': w, 'k': u, 'c': int(i * .03), 'i': i, 'pw': p * i})
     return S
 
