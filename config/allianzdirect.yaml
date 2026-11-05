@@ -1,0 +1,107 @@
+# Allianz Direct Search & AI monitor: what is measured and where the data comes from.
+# Public repository: this file contains search terms only, no client-internal data.
+
+client:
+  name: Allianz Direct
+  domain: allianzdirect.nl
+  brand_pattern: 'allian[sz]|allainz|alianz|allsecur'   # brand queries in Search Console (case-insensitive)
+  mention_pattern: 'allianz\s*direct'                   # brand mention in AI answers
+
+# Source tables (FolloEngine and the Windsor Search Console export). The service account only needs
+# BigQuery Data Viewer on exactly these tables; see scripts/setup_gcp.sh.
+sources:
+  project: folloagency
+  serp: google_search_reporting.allianz_direct_nl_v2_serp_full_follo
+  aio: google_search_reporting.allianz_direct_nl_v2_ai_overviews_follo
+  llm: llm_reporting_tables.allianz_direct_nl_v2_llm_combined
+  gsc_queries: gsc_queries.allianzdirect
+  gsc_page_queries: gsc_page_queries.allianzdirect
+  gsc_country: nld          # Nederland only
+  gsc_search_type: web
+  start: '2025-05-19'       # first FolloEngine measurement
+
+# Clusters. Rules are applied top to bottom; the first match wins, otherwise 'default'.
+# The same rules run in BigQuery (RE2) and in Python, so keep them RE2-compatible.
+clusters:
+  labels:
+    autoverzekering: Autoverzekering
+    autoschade: Autoschade & service
+    woonverzekering: Woonverzekering
+    reisverzekering: Reisverzekering
+    overig: Rechtsbijstand & overig
+  default: autoverzekering
+  keyword_rules:
+    - [merk, 'allian[sz]|allainz|alianz|allsecur']        # brand: only counted in 'Alle clusters'
+    - [reisverzekering, 'reis|annuler|wintersport']
+    - [overig, 'rechts?bijstand|rechtbijstand|juridis|rechtshulp|dagwaarde|autowaarde|restwaarde|^verzeker|goedkoo\w* verzekering$|verzekering (afsluiten|aanvragen|berekenen)|direct verzekerd|premie$|welke verzekeringen heb ik nodig$']
+    - [woonverzekering, 'inboedel|opstal|woon|huis|woning|aansprakelijk|avp|lekkage|waterschade|brandverzekering|glasverzekering|koophuis|huur|recreatie|chalet|vakantiehuis']
+    - [autoschade, 'schade|groene kaart|steenslag|hagel|ruit|pech|spijker|schroef|in brand|vandalisme|roy-data|schadevrije|geparkeerde|beschadigd|dier aangereden|geraakt']
+  url_rules:
+    - [reisverzekering, 'reis|annuler']
+    - [overig, 'rechtsbijstand']
+    - [woonverzekering, 'woon|inboedel|opstal|aansprakelijk|huis|lekkage|waterschade']
+    - [autoschade, 'schade|klantenservice|groene-kaart|pechhulp|steenslag']
+    - [autoverzekering, 'auto']
+  url_default: overig
+  prompt_rules:
+    - [reisverzekering, 'reis|annuler']
+    - [woonverzekering, 'inboedel|woon|opstal|aansprakelijk|huisverz']
+    - [autoverzekering, 'auto']
+  prompt_default: overig
+
+dashboard:
+  top_keywords: 36          # streak table Google
+  aio_keywords: 80          # AIO summary table
+  aio_hist_keywords: 60     # AIO heatmap per measurement
+  hist_columns: 20          # columns in heatmaps
+  gpt_hist_columns: 15
+  gsc_top_queries: 150
+  auto_doubts_from: '2026-11-02'   # automatic data-quality annotations from this date on
+
+# Google AI Mode via DataForSEO (Standard Queue, about 70% cheaper than Live)
+aimode:
+  location_code: 2528        # Nederland
+  language_code: nl
+  device: desktop
+  queue: standard            # standard | live
+  keywords:
+    - "auto verzekeren"
+    - "autoverzekering"
+    - "autoverzekeraar"
+    - "autoverzekering vergelijken"
+    - "reisverzekering"
+    - "aansprakelijkheidsverzekering"
+    - "inboedelverzekering"
+    - "rechtsbijstandverzekering"
+    - "annuleringsverzekering"
+    - "verzekeringen"
+    - "goedkoopste autoverzekering"
+    - "goedkope autoverzekering"
+    - "wa verzekering"
+    - "opstalverzekering"
+    - "dagwaarde auto berekenen"
+    - "autoverzekering berekenen"
+    - "schadeformulier"
+    - "doorlopende reisverzekering"
+    - "autoverzekering afsluiten"
+    - "kortlopende reisverzekering"
+    - "groene kaart"
+    - "woonverzekering"
+    - "beste autoverzekering"
+    - "all risk autoverzekering"
+    - "waterschade verzekering"
+    - "daklekkage verzekering"
+    - "pechhulp"
+    - "autoverzekering overstappen"
+    - "beperkt casco"
+    - "steenslag reparatie kosten"
+    - "hagelschade auto"
+    - "autoverzekering jongeren"
+    - "autoverzekering op naam partner"
+    - "schade aan mijn geparkeerde auto"
+    - "reisverzekering werelddekking"
+    - "beste reisverzekering"
+    - "goedkope annuleringsverzekering"
+    - "wa casco"
+    - "inboedelverzekering kosten"
+    - "autoverzekering per kilometer"

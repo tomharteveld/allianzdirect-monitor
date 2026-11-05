@@ -1,0 +1,161 @@
+name: Allianz Direct monitor
+
+# Every Monday the dashboard is rebuilt from BigQuery (FolloEngine, Search Console, Google Search Status:
+# no cost). In even ISO weeks Google AI Mode is scraped first via DataForSEO (the only paid step).
+# Public repository: nothing with client data is kept as a workflow artifact or printed to the log.
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'          # every Monday 05:17 UTC (06:17 / 07:17 Amsterdam)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'auto = AI Mode only in even weeks + dashboard · full = AI Mode + dashboard · rebuild = dashboard from BigQuery only · smoke = 3 AI Mode calls, nothing stored or deployed'
+        type: choice
+        options: [auto, full, rebuild, smoke]
+        default: rebuild
+
+permissions:
+  contents: read
+  id-token: write      # OIDC token for Google Workload Identity Federation
+  pages: write
+  actions: write       # delete the Pages artifact after deploying, keep the schedule enabled
+
+concurrency:
+  group: allianzdirect-monitor
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: src
+  MODE: ${{ inputs.mode || 'auto' }}
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  BQ_DATASET: ${{ vars.BQ_DATASET || 'allianzdirect_monitor' }}
+  BQ_LOCATION: ${{ vars.BQ_LOCATION || 'EU' }}
+
+jobs:
+  aimode:
+    if: ${{ (inputs.mode || 'auto') != 'rebuild' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Decide whether AI Mode runs this week
+        id: plan
+        run: |
+          week=$(date -u +%V)
+          if [ "$MODE" = "auto" ] && [ $((10#$week % 2)) -ne 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "Week $week (oneven): geen AI Mode-scrape, alleen dashboard"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "Week $week: AI Mode-scrape"
+          fi
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.plan.outputs.run == 'true' }}
+      - uses: actions/setup-python@v5
+        if: ${{ steps.plan.outputs.run == 'true' }}
+        with:
+          python-version: '3.12'
+          cache: pip
+      - if: ${{ steps.plan.outputs.run == 'true' }}
+        run: pip install -r requirements.txt
+
+      - name: Scrape AI Mode (DataForSEO)
+        if: ${{ steps.plan.outputs.run == 'true' }}
+        env:
+          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
+          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
+        run: python -m admon.aimode ${{ env.MODE == 'smoke' && '--limit 3 --max-error-rate 1' || '' }}
+
+      - name: Smoke test dashboard (synthetic data, built and checked, not stored)
+        if: ${{ env.MODE == 'smoke' }}
+        run: python -m admon.dashboard --source fixture --out "$RUNNER_TEMP/smoke-site" --path smoke
+
+      - name: Google auth (Workload Identity Federation)
+        if: ${{ steps.plan.outputs.run == 'true' && env.MODE != 'smoke' && vars.GCP_WIF_PROVIDER != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Google auth (service account key)
+        if: ${{ steps.plan.outputs.run == 'true' && env.MODE != 'smoke' && vars.GCP_WIF_PROVIDER == '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Load into BigQuery
+        if: ${{ steps.plan.outputs.run == 'true' && env.MODE != 'smoke' }}
+        run: python -m admon.bq load data/raw/aimode_*.jsonl.gz
+
+  build:
+    needs: aimode
+    # a failed AI Mode scrape must not block the weekly dashboard: the last AI Mode run stays visible
+    if: ${{ always() && (inputs.mode || 'auto') != 'smoke' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Google auth (Workload Identity Federation)
+        if: ${{ vars.GCP_WIF_PROVIDER != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      - name: Google auth (service account key)
+        if: ${{ vars.GCP_WIF_PROVIDER == '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Build dashboard from BigQuery
+        env:
+          DASHBOARD_PATH: ${{ secrets.DASHBOARD_PATH }}   # secret sub path, keeps the URL unguessable
+        run: |
+          test -n "$DASHBOARD_PATH" || { echo "Secret DASHBOARD_PATH ontbreekt"; exit 1; }
+          python -m admon.dashboard --source bq --out site --mode "$MODE"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Delete Pages artifact (public repo)
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ids=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" --jq '.artifacts[].id')
+          for id in $ids; do gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id"; done
+          echo "Removed artifacts: ${ids:-none}"
+
+      - name: Summary
+        run: |
+          echo "Dashboard bijgewerkt (onder het geheime pad). De iframe in Follo Tools toont deze versie automatisch." >> "$GITHUB_STEP_SUMMARY"
+          echo "Modus: ${{ env.MODE }}" >> "$GITHUB_STEP_SUMMARY"
+
+  # Public repos: GitHub disables scheduled workflows after 60 days without repository activity.
+  # Re-enabling the workflow through the API on every run resets that timer, without dummy commits.
+  keepalive:
+    runs-on: ubuntu-latest
+    if: ${{ always() }}
+    needs: [deploy]
+    steps:
+      - name: Keep the weekly schedule enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/weekly.yml/enable" && echo "Schedule actief gehouden"
