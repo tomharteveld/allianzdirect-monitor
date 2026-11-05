@@ -126,6 +126,8 @@ jobs:
 
   deploy:
     needs: build
+    # always(): otherwise a skipped AI Mode job (rebuild, odd weeks) silently skips the deploy too
+    if: ${{ always() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
