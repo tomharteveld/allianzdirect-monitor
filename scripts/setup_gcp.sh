@@ -12,7 +12,7 @@ DATASET="${BQ_DATASET:-${REPO_NAME//-/_}}"; LOCATION="${BQ_LOCATION:-EU}"
 SOURCE_TABLES=(
   google_search_reporting.allianz_direct_nl_v2_serp_full_follo
   google_search_reporting.allianz_direct_nl_v2_ai_overviews_follo
-  llm_reporting_tables.allianz_direct_nl_v2_llm_combined
+  llm_reporting_tables.allianz_direct_nl_v2_llm_combined_canonical
   gsc_queries.allianzdirect
   gsc_page_queries.allianzdirect
 )
@@ -29,8 +29,12 @@ bq --headless --location="$LOCATION" show "$PROJECT_ID:$DATASET" >/dev/null 2>&1
 retry gcloud projects add-iam-policy-binding "$PROJECT_ID" --member "serviceAccount:$SA" --role roles/bigquery.jobUser --condition=None >/dev/null
 retry bq --headless --project_id="$PROJECT_ID" query --nouse_legacy_sql --quiet "GRANT \`roles/bigquery.dataEditor\` ON SCHEMA \`${PROJECT_ID}.${DATASET}\` TO 'serviceAccount:${SA}'" >/dev/null
 for t in "${SOURCE_TABLES[@]}"; do
-  retry bq --headless --project_id="$PROJECT_ID" query --nouse_legacy_sql --quiet "GRANT \`roles/bigquery.dataViewer\` ON TABLE \`${PROJECT_ID}.${t}\` TO 'serviceAccount:${SA}'" >/dev/null
-  echo "  leesrecht op $t"
+  # tables only (a view would need its underlying tables too); errors are printed, not retried forever
+  if out=$(bq --headless --project_id="$PROJECT_ID" query --nouse_legacy_sql --quiet "GRANT \`roles/bigquery.dataViewer\` ON TABLE \`${PROJECT_ID}.${t}\` TO 'serviceAccount:${SA}'" 2>&1); then
+    echo "  leesrecht op $t"
+  else
+    echo "  LET OP: leesrecht op $t mislukt: $out"
+  fi
 done
 gcloud iam workload-identity-pools describe "$POOL" --location=global >/dev/null 2>&1 || gcloud iam workload-identity-pools create "$POOL" --location=global --display-name "GitHub Actions"
 # one provider per repository; the condition trusts exactly this repository

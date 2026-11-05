@@ -11,7 +11,7 @@ Elke maandag 05:17 UTC (GitHub Actions)
   ├─ even weken: Google AI Mode via DataForSEO (40 zoekwoorden, Standard Queue)  ->  BigQuery allianzdirect_monitor
   └─ dashboard bouwen uit BigQuery:
        FolloEngine  google_search_reporting.allianz_direct_nl_v2_serp_full_follo / _ai_overviews_follo
-       FolloEngine  llm_reporting_tables.allianz_direct_nl_v2_llm_combined
+       FolloEngine  llm_reporting_tables.allianz_direct_nl_v2_llm_combined_canonical
        Windsor      gsc_queries.allianzdirect, gsc_page_queries.allianzdirect (alleen NL, web)
        eigen        allianzdirect_monitor.aimode_results, .annotations
        publiek      status.search.google.com (Google-updates)

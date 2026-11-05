@@ -13,7 +13,7 @@ sources:
   project: folloagency
   serp: google_search_reporting.allianz_direct_nl_v2_serp_full_follo
   aio: google_search_reporting.allianz_direct_nl_v2_ai_overviews_follo
-  llm: llm_reporting_tables.allianz_direct_nl_v2_llm_combined
+  llm: llm_reporting_tables.allianz_direct_nl_v2_llm_combined_canonical   # base table behind the _llm_combined view
   gsc_queries: gsc_queries.allianzdirect
   gsc_page_queries: gsc_page_queries.allianzdirect
   gsc_country: nld          # Nederland only
